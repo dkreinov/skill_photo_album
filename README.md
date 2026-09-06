@@ -1,18 +1,25 @@
 # photo-album — a Claude Code skill for building a real printed photo book
 
-Turn a large, messy pool of photos, videos and AI-edited images into a **print-ready vendor
-photo book** — with an auditable selection trail, a live album builder the user drives
-themselves, and gates that check the *printed pixels*, not just the plan.
+Turn a large, messy pool of photos, videos and AI-edited images into a **printed book you can
+hold** — with an auditable selection trail, a live album builder the owner drives themselves,
+and gates that check the *printed pixels* rather than the plan that produced them.
 
 Built with and for [Claude Code](https://claude.com/claude-code). The agent orchestrates; the
 deterministic steps are plain-Python scripts bundled here.
 
-This skill is distilled from one complete run: a 30×30cm layflat book, 76 pages, ~480 pool
-images, 33 videos, two AI-chat conversations of edited images, 267 commits, 40 scripts and
-seven plan revisions. Every number quoted in the lessons is a measured number from that run —
-not a default to trust.
+Distilled from one complete run, carried all the way to a book assembled in a print vendor's
+own editor: a 30×30cm layflat book, 76 pages, ~480 pool images, 33 videos, two AI-chat
+conversations of edited images, 270+ commits, 40 scripts, eight plan revisions, and a hundred
+numbered decisions. **Every number quoted in the lessons is a measured number from that run —
+none of them is a default to trust.**
 
-## What it produces
+## Who this is for
+
+Someone who wants a specific book made properly, is willing to spend real time on it, and cares
+that the faces in it are the actual faces of the actual people. If you want a photo book by
+Friday, use your vendor's own editor — it is a good tool and this is not a race.
+
+## What it does
 
 | Artifact | Description |
 |---|---|
@@ -24,7 +31,20 @@ not a default to trust.
 | **The album builder** | A single offline HTML file: live composer, the full pool, per-tile controls, presets, auto-fill, guides, overlays, page map, undo, JSON import/export |
 | Print assets | Every planned image at print resolution, in the vendor's accepted format, with honest real-pixel DPI |
 | Print-fidelity PDF | A proof rendered by the same engine that computes the final geometry |
-| The book, in the vendor's editor | Assembled and reviewed — **the user orders and pays** |
+| Gate reports | Fidelity, trim clearance, mat integrity, visibility, fold-on-a-face, trim-cuts-a-person, derivation |
+| The book, in the vendor's editor | Assembled, verified object by object at 0.0mm — **and the user orders and pays** |
+
+## What it does not do
+
+- It is **not fast** and not cheap in tokens.
+- It is **not vendor-agnostic** out of the box. Trim size, safe margin, accepted formats,
+  page-count rules, cover scale and reading direction must be *measured* from your vendor's own
+  editor before layout begins. The skill teaches the measuring; it cannot ship your numbers.
+- It is **not a design tool**. It gives you a competent, honest layout with guardrails. A
+  designer will do better-looking work faster.
+- It is **not autonomous**. It is built around user gates and it will stop and ask.
+- It **never orders and never pays**, never deletes anything from your vendor account, and never
+  reloads over your unsaved work. Those are your clicks.
 
 ## Quick start
 
@@ -32,92 +52,110 @@ not a default to trust.
 /photo-album      (or just: "build me a photo book from this album link")
 ```
 
-Then, in order:
-
-1. **Phase 0** — the agent establishes frozen contracts: title, product (trim size, page
-   raster, page-count rule), reading direction, identity rules, file layout, ledger schema.
-2. **Phase 1–2** — it downloads and inventories the pool, then re-culls it with vision-judge
-   fleets and pairwise duels. You approve via a generated HTML tool.
-3. **Phase 3** — a page plan you ratify, after the agent has *measured* the vendor's real safe
-   margin from the editor's own guide.
-4. **Phase 4–5** — print assets, then the album builder lands in your browser and you build the
-   book page by page.
-5. **Phase 6** — the agent assembles it in the vendor's editor. You place the order.
-
 Install: copy this repo into your skills directory (e.g. `~/.claude/skills/photo-album/`), or
 point Claude Code at it as a plugin skill. Then `pip install -r scripts/requirements.txt`.
+
+Then, in order — the full route is at the top of `SKILL.md`:
+
+1. **Contracts** — title, product (trim size, page raster, page-count rule), reading direction,
+   identity rules, file layout, ledger schema, and content-tiered DPI floors.
+2. **Acquire and select** — the pool is downloaded, inventoried and re-culled by vision-judge
+   fleets and pairwise duels. You approve in a generated HTML tool.
+3. **Plan** — a page plan you ratify, *after* the agent has measured the vendor's real sheet.
+4. **Assets, then build** — print assets (with faces protected), then the album builder lands in
+   your browser and you compose the book page by page.
+5. **Gate the printed pixels** — fidelity, trim, visibility, the fold, the derivation chain.
+6. **Vendor build, then the cover** — assembled in a duplicated project, verified object by
+   object; then the wrap, the spine and the vendor's barcode.
+7. **You place the order.**
 
 ## Repo layout
 
 ```
-SKILL.md                     the skill: run architecture, contracts, the seven phases
-references/lessons.md        the hard rules, each with the number that bought it
-references/protocols.md      vision-fleet templates, executor packets, the print gates
+SKILL.md                     the route, the run architecture, the contracts, the ten phases
+references/lessons.md        the hard rules (A–K), each with the number that bought it
+references/protocols.md      vision-fleet templates, executor packets, gates G1–G14,
+                             the vendor-editor build method, the cover/spine/wrap checklist
 references/scripts.md        the bundled scripts, and specs for the parts not shipped
 scripts/                     14 generic, verifiable Python scripts
 ```
 
-## The three ideas worth stealing
+## The ideas worth stealing even if you never build a book
 
 **1. More than three visual decisions ⇒ generate a tool, never ask in chat.**
-Every gate is an offline single-file HTML tool: thumbnails with a full-res lightbox, every
-click persisted to localStorage as an overlay over an immutable draft, a JSON export with a
+Every gate is an offline single-file HTML tool: thumbnails with a full-res lightbox, every click
+persisted to localStorage as an overlay over an immutable draft, a JSON export with a
 `<textarea>` fallback, and live invariant guards ported from the validator. *User export =
-approval.* The user works at their own pace, sees consequences cross-linked inline, and cannot
-lose work to a tool bug.
+approval.* The orchestrator, meanwhile, never renders an image into its own context — all
+eyeballing goes to subagents that return capped reports.
 
-**2. The builder UI and the print engine are two implementations of one geometry — so diff
-them automatically.**
-They *will* drift, and the drift is invisible until it is printed. A 28.8cm framed photo
-printed as full bleed; every rotation silently dropped; 12 of 14 tiles outside the safe box,
-the worst by 1.1cm. The fix is a browser-driven fidelity harness that compares centre, size,
-rotation, border box, layer rank and containment within 1.5% of spread width — plus an
-*absolute* assertion on both sides, because "the two implementations agree" is not "the result
-is correct".
+**2. Two implementations of one geometry must be diffed — and each asserted absolutely.**
+A builder UI and a print engine *will* drift, and the drift is invisible until it is printed.
+"Both engines agree" is not "the result is correct".
 
 **3. Assert clearance on the printed pixels, not absence in the data.**
-A trim check that diffs colours reported "0.000cm of ink in the trim band" for a print that was
-visibly cut, because the clamp parks tiles with 0.25mm of slack and the guillotine ate it.
-Replace it with a per-tile sentinel-mask gate on the real print canvas — and give every new
-gate a **negative proof**: turn the fix off and watch the gate fail exactly the items it used to
-pass.
+And give every new gate a **negative proof**: turn the fix off and watch the gate fail exactly
+the items it used to pass.
 
-## What this cost, honestly
+**4. The owner's sentences are gates.** "The fold must never fall on a face" and "the trim must
+never cut a person" became face detectors run over the real drawn spread. They found offenders
+he had never noticed — including a fold running between someone's eyes.
 
-The reference run took weeks of wall-clock time and a great deal of agent time: 267 commits,
-40 scripts, ~2300 lines of run journal, and a builder tool that went through twenty versions.
-Phase 5 — the builder — consumed more effort than every other phase combined. If you want a
-photo book by Friday, use the vendor's own editor.
+## What will bite you
 
-**What it is good at**
+An honest list of the defects that reached, or nearly reached, paper in the reference run. Every
+one had green gates at the time.
 
-- Re-culling a pool too large to hold in your head, with a written reason behind every keep and
-  every drop.
-- Catching print defects *before* the print run: real-pixel DPI, trim clearance, mat integrity,
-  rotation and layout fidelity between what you saw and what prints.
-- Making the user the decider on taste while the agent handles everything mechanical.
-- Surviving handoffs. State lives in files (`plan.md`, `journal.md`, `records/*.json`), so a
-  fresh agent with no conversation history can pick the run up.
-- Working honestly with AI-generated imagery: identity preserved, provenance tracked,
-  upscaling described as what it is (no detail is created).
+- **Your fidelity harness will be green while the print is wrong.** It compares rects, padding, z
+  and angle — all of which describe *where the picture is*. It says nothing about what a tile
+  paints where the picture is **not**. A tile transparent in the composer printed an opaque
+  17.04mm white mat (0.50mm on screen), and a legacy `rotate_deg` field the renderer honoured and
+  the composer ignored silently turned a picture through 180°. Assert ground, mat, drawn frame
+  width in mm of paper, and **which source file each engine opened**.
+- **Whole-frame AI edits destroy every face in the frame.** The model re-renders the whole picture
+  at ~1450px, so faces come back re-invented — including faces nowhere near the edit you asked
+  for. The fix is not to regenerate; it is to composite the real photographic faces back, with the
+  transform recovered by gradient correlation where the frame was outpainted. And scan the whole
+  frame: the report said one damaged face, the measurement found three.
+- **Vendor space is not plan space.** The editor's real sheet was 58.40 × 29.70cm, not the
+  "30 × 30" on the tin. The mapping onto it cut 5.0mm off each outer edge, so a tile parked flush
+  on our own safe line ended up **outside the vendor's sheet**.
+- **The cover does not share the interior's scale.** Measured on its own canvas, the cover sheet
+  was 1.077× the spec figure — so the first wrap was rendered at **283 dpi instead of 306, 7.7%
+  short**. Caught one step before printing.
+- **The vendor prints its own barcode over your artwork.** White-backed, on top. On the back-cover
+  collage it landed on four faces. Measure it and reserve it as a dead zone before composing.
+- **The spine is real and no page-level gate mentions it.** A grep for "spine" across the codebase
+  returned zero hits while two cover masters already existed.
+- **A frame that exists but cannot be seen is a defect**, and an edge gate answers "is it inside
+  the paper", never "can it be seen". Occlusion and the fold need their own checks.
+- **A fix that trades one edge for the opposite edge is not a fix.** A 3.36mm nudge that rescued a
+  clipped left ring pushed the right ring into the binding band. Only a four-sided check saw it.
+- **A derived artifact silently keeping an old source bit three separate subsystems** — a back-cover
+  master, an upload library, and two code paths that constructed the same state. Ask what *opens*
+  the file, not what declares it.
+- **The canvas DOM order was reversed**, and placing in DOM order would have printed the album back
+  to front. Verify order against labels, and prove one unit through place → save → reload → read
+  back before committing all of them.
+- **The vendor editor can wedge silently.** One click on its heaviest view froze it past every
+  timeout. Probe that view before you have anything unsaved.
 
-**What it is not**
+## What it cost, honestly
 
-- Not fast, and not cheap in tokens.
-- Not vendor-agnostic out of the box. Trim size, safe margin, accepted formats, page-count rules
-  and RTL/LTR behaviour must be *measured* from your vendor's own editor before layout begins.
-- Not a design tool. It gives you a competent, honest layout with guardrails — a designer will
-  do better-looking work faster.
-- Not autonomous. It is built around user gates, and it will stop and ask.
-- It never orders and never pays. That is always the user's click.
+Weeks of wall-clock time and a great deal of agent time: 270+ commits, 40 scripts, ~3,100 lines
+of run journal, a builder tool that went through twenty versions, and a vendor build that placed
+81 objects across 39 canvases by hand-typed centimetres. Phase 5 — the builder — consumed more
+effort than every other phase combined, and Phases 6–8 are where a project that *looks* finished
+turns out not to be.
 
 ## Privacy
 
-This repo publishes the **method** only. No photographs, no generated imagery, no thumbnails,
-no page plans, no manifests, and no personal details from the original run are included. The
-worked example is anonymised throughout: it is "a five-day family trip", and the numbers are
-measurements, not content. Where a bundled script embedded run-specific text, it has been
-replaced with a placeholder marked in `references/scripts.md`.
+This repo publishes the **method** only. No photographs, no generated imagery, no thumbnails, no
+page plans, no manifests, no captions and no personal details from the original run are included,
+and the vendor is generalised. The worked example is anonymised throughout: it is "a five-day
+family trip", and the numbers are measurements, not content. Where a bundled script embedded
+run-specific text it has been replaced with a placeholder marked in `references/scripts.md`. The
+album project itself is a local repository with no remote, and it will stay that way.
 
 ## License
 

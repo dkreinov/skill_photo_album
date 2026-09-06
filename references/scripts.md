@@ -103,3 +103,27 @@ that every slot appears exactly once, in bounds, with its file present.
 **A vendor-export validator** — counts, dimensions, decode, non-blank, ZIP CRC on the exact
 final files. Small, but the last thing standing between you and a bad print run: write one and
 run it on the files you actually upload.
+
+**The face-repair compositor.** Given a generated frame and its real source: recover the
+transform (brute-force offset search for a plain re-render; gradient correlation, FFT coarse then
+refined, for an outpainted frame), detect every face in the frame, and paste the real faces back
+through feathered elliptical masks with per-channel exposure matching and a smoothstep falloff.
+Emits a declared substitution table that the build applies on **every** state-construction path.
+See SKILL.md → Phase 4, and lessons E10–E14.
+
+**The editor tile baker.** Collapses a plan whose tiles carry rotation, zoom, crop and borders
+into what an axis-aligned-boxes-only editor can accept: opaque group tiles plus full-sheet
+background objects, baked at ~3× the renderer's canvas, each carrying the canvas index, the
+geometry key and the four centimetre values to type. Ships `--verify` (every object inside the
+sheet, aspect within 0.5%, geometry keys unique per canvas, reconstruction error against a
+re-render) and `--check-scale` (render a spread at both scales and compare **structurally**, both
+sides blurred, since a raw diff cannot and should not be zero).
+
+**The human-rule detectors.** A vendored offline face-detection model (ONNX, tiled multi-scale
+sweep) run over the *rendered* spread, wrapped as three checks: fold-on-a-face (report),
+trim-cuts-a-person (fatal, with skin-gamut share reported and the paper colour excluded), and
+nearest-face clearance to every protected cover zone at once. See protocols.md G12.
+
+**The cover wrap builder.** Renders front panel + spine + back panel as ONE continuous image at a
+pixels-per-cm read from the environment, against the **measured** cover sheet rather than the
+spec's, with the vendor's barcode footprint declared to the packer as a dead zone.

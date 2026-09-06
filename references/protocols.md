@@ -4,6 +4,8 @@
 - **Part 2** — the executor packet shape.
 - **Part 3** — the gate machinery that made the print engine trustworthy.
 - **Part 4** — the asset pipelines (ingestion, stickers, decorations, badges).
+- **Part 5** — building the book inside the vendor's editor.
+- **Part 6** — the cover, the spine and the wrap (a different product from the interior).
 
 ---
 
@@ -254,6 +256,79 @@ editors in the same category. Convert every repro into a permanent regression te
 reference run this surfaced three data-loss / wrong-print defects that all internal gates had
 passed, and it is where auto-fill and alignment guides came from.
 
+## G10. Ground, source and rotation — what G1 cannot see
+
+G1 compares rects, padding, z and angle. All four can AGREE while the print is wrong, because
+they only describe **where the picture is**. Add these four assertions, each of which caught a
+defect that shipped past a green G1:
+
+1. **Drawn frame width in millimetres of paper**, per side, per bordered tile. A tile whose picture
+   filled part of its frame read as a 0.50 mm hairline on screen and printed a 17.04 mm white mat.
+2. **Ground opacity.** Assert explicitly whether each engine paints anything behind the picture.
+   The composer element had no background (the image beneath showed through); the renderer painted
+   opaque paper. Tiles should alpha-composite and be transparent except for a real mat.
+3. **Which source file each engine opened**, and the **source aspect after EXIF transpose**. A
+   substitution applied on one code path and not another means the two engines are drawing
+   different pictures at identical rectangles.
+4. **Rotation mod 360, with legacy fields planted.** A slot carrying a legacy `rotate_deg` beside
+   its `rot` made the renderer pre-rotate pixels and then rotate again — net 180° and a transposed
+   aspect — while the composer had never heard of the legacy field. Define a tile's rotation in
+   exactly one function, and give the harness a case with a legacy field the engine must ignore.
+
+## G11. Visibility gate — "it is in the plan but it is not visible"
+
+Every numeric gate is blind to an element that paints nothing: a slot never emitted has no rect to
+disagree about, and a slot buried under the picture it sits on has a perfectly correct rect. Ask
+the two questions they cannot:
+
+- **Identity and position**, re-derived from the user's own export through the very same shared
+  law the composer uses — a fallback to a default position counting as a FAILURE, not a pass.
+- **Visibility**: render the spread twice, once with the element lifted out, and require the two
+  renders to genuinely differ **inside that element's own rectangle**. Prove teeth both ways — the
+  pre-fix plan must fail naming the affected spreads, and moving an element under its neighbour
+  must fail with "0.0% of its own rectangle".
+
+Note the sibling rule: an edge gate answers "is it inside the paper", never "can it be seen".
+Occlusion and the fold need their own checks, and an exemption must be declared **with the rect
+that justifies it** so it goes stale automatically.
+
+## G12. Human-rule gates (turning the owner's sentences into checks)
+
+Run an offline face detector over the **real drawn spread**, not over source files:
+
+- **Fold on a face** — flag any face crossing the fold or within ~5 mm of it, on every spread
+  carrying a full-spread image. **Report, do not block**: detection is heuristic and clearing a
+  seam costs resolution, a trade only the owner may make.
+- **Trim cuts a person** — convert the vendor's trim into plan space (here 5.0 mm of vendor space
+  = 0.5051 cm of plan space), cut both strips out of the real drawn sheet, and make a face in a
+  strip **fatal**. Report skin-gamut share beside it as the only honest body signal, with the
+  album's own paper colour excluded or every margin reads 100% skin. Assert the two constants the
+  law uses against the vendor mapping's own numbers, so the law cannot police a strip nobody cuts.
+- **Frame-ring clipping, four-sided** — measure every bordered tile's frame, its ring and its full
+  drawn bbox against **both** edges that can cut (your own sheet and the vendor's trim), name
+  which edge cut, and check all four sides: a fix that trades the left edge for the right edge is
+  not a fix.
+- **Re-run every one of these against the FIX**, not just against the original defect.
+
+## G13. Derivation gate — against downstream staleness
+
+A frozen plan records the owner's **variant choice**, never which bytes to print. One
+`resolve_asset()` function turns a plan entry into a file to open, and every consumer calls it.
+Then gate the chain: walk artwork → master → staged upload copy and demand **byte identity at
+every link**, and assert the plan's own sha256, its slot set, the resolved print file and the
+placement of every slot against the *current* plan. Give each plan chain its own map file — two
+plans sharing one output filename is how a stale set hides. Prove teeth on injected faults: a
+zero-byte file, an edited placement, a bogus orphan.
+
+## G14. Vendor-space mapping gate
+
+Your safe-area law lives in plan space; the vendor's trim lives in vendor space. Write the mapping
+as **one function**, assert that every gate reading a trim constant reads it from that function,
+and re-check every tile after conversion — a non-bleed tile parked flush on your safe line can end
+up outside the vendor's sheet. Assert the mapping is **uniform** (no aspect moves) and print what
+it costs on each edge. Separately, assert the **cover** canvas's own scale rather than inheriting
+the interior's, and assert the delivered wrap's dpi over the **measured** sheet size.
+
 ---
 
 # Part 4 — Asset pipelines
@@ -311,3 +386,88 @@ construction. Gate: no transparent pixel inside 0.95 of the fitted ellipse, corn
 opaque area within 3% of πab. Record the fitted centre and both semi-axes in the manifest.
 Report a per-design face-size estimate — and label it a heuristic if it is one — and put a 100%
 face-crop row in the preview so the user judges faces visually, not numerically.
+
+---
+
+# Part 5 — Building the book inside the vendor's editor
+
+The plan is finished, the print files exist, and now every one of them has to end up in a web app
+you do not control. This is the part of the run with no undo, so it has its own method.
+
+## 5.1 Work in a DUPLICATE project
+
+Duplicate the project in the vendor's own UI before touching anything, and take a **baseline
+snapshot of every canvas's object geometry** before the first change. The whole run then stays
+reversible in one click, and you have something to diff against.
+
+## 5.2 Establish what the editor can actually be told
+
+Recon first, and write the answer down as a sentence. Here it was: **the editor accepts only
+axis-aligned boxes — W, H, X, Y in centimetres. No angle field, no crop field, no zoom field.**
+Everything else must be baked into pixels before upload or it cannot be expressed at all. Also
+establish: accepted upload formats and size limit, whether uploads are one-file-at-a-time, whether
+there is autosave (assume not), whether "apply template" is undoable (often not), and what the
+purchase actually covers.
+
+## 5.3 Bake, don't fight
+
+A baked tile is **the whole drawn appearance** — crop, zoom, border, rotation — so every placed
+object is angle 0. Count how many slots have a frame aspect their file does not before you decide
+that rotation is your only problem; in this run 27 slots were rotated and **88 would have been
+squashed** by typing the plan's W/H onto the raw file. Where tiles overlap, bake them **together**
+into opaque groups over a full-sheet background object rather than relying on the vendor's alpha
+handling (see lessons D11). Bake at ~3× the renderer's working canvas.
+
+## 5.4 Prove ONE unit end to end before committing all of them
+
+The mandated order on a single spread: **place → type → save → reload → read back**, and require
+0.0 mm error before doing the other N−1. Save deliberately after every batch, and re-verify
+**after** the save, not before it — the read-back is the assertion, and the object model after a
+server-confirmed save is the only state that matters.
+
+## 5.5 Verify the canvas ORDER against the labels
+
+Read the DOM order and compare it to the visible page labels. In this run the canvas DOM order was
+**REVERSED** — DOM index 0 was the LAST spread and DOM index 37 the first — so `dom_index =
+37 − canvas_index`. The recon had it right about the count and wrong about the direction, and
+placing in DOM order would have printed the whole album back to front. The same class of error
+appeared twice more: right-page-first ordering in an RTL book, and a proof PDF whose page N was
+spread index N−2. **Pin down every index↔label mapping explicitly and write it down.**
+
+## 5.6 Key objects by geometry
+
+Vendor ids and DOM input indices are regenerated on save. Key by **canvas index + geometry in cm
+rounded to 0.01**, assert a payload property unique per canvas (the image's natural pixel size, or
+its aspect where the object hides the size), and record the server-assigned filename at upload
+time as the only cross-session link back to your own file. See lessons D12.
+
+## 5.7 The standing prohibitions
+
+Nothing uploaded that was not planned, **nothing deleted**, nothing reloaded over unsaved work,
+**nothing ordered and nothing paid**. Stale library images are listed for the owner to delete
+himself, as a separate authorised act. End every session log by restating what was and was not
+done, and leave a resume point driven entirely off the map file.
+
+# Part 6 — The cover, the spine and the wrap
+
+Treat the cover as a **different product** from the interior. Nothing that gates a page gates a
+wrap.
+
+1. **Measure the cover canvas's own scale.** Do not inherit the interior's px/cm. Read the editor's
+   property panel back against a known object and derive px/cm to five figures; a physically
+   larger sheet displayed at the same screen width must show at a smaller magnification, and that
+   discrepancy is the tell. Getting this wrong cost 7.7% of linear scale here — a wrap rendered at
+   283 dpi instead of 306, caught one step before printing.
+2. **Establish the spine width** from the page count and binding, and reserve it. A spine grep that
+   returns zero hits across your codebase while two cover masters already exist is a finding.
+3. **Map the turn-in / wrap masks** and size the artwork so nothing you care about goes round the
+   board.
+4. **Map the vendor's printed furniture** — barcode, logo, legal text — as a hard **no-content dead
+   zone** declared to whatever packs the artwork. It prints white-backed OVER your picture.
+5. **Ask the owner which panel is the front.** Circumstantial signals are not proof and a wrong
+   cover is a reprint.
+6. **Run the face check on the delivered wrap**, in true millimetres, against every protected zone
+   at once — barcode, spine band, all four turn-ins — and report the nearest-face clearance per
+   zone as a number for the owner to accept or reject.
+7. **Place one continuous wrap image, not three panels**, where the editor fills a frame from a
+   single file: three panels add two seams and two more chances to mistype a number, for nothing.

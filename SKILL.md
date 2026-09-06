@@ -1,18 +1,37 @@
 ---
 name: photo-album
-description: Turn a large mixed pool of photos, videos and AI-edited images into a print-ready vendor photo book, with an orchestrator + worker-agent team and a gate at every irreversible step — acquire and inventory into a hashed ledger, re-cull with vision-judge fleets and pairwise duels, page-plan and then hand the user a live single-file HTML album builder whose geometry is diffed automatically against the print engine, produce print assets at honest real-pixel DPI, and assemble in the vendor's web editor. Use when the user asks to build a photo book, family album, printed photo album, yearbook or trip album from their photo library, or wants an auditable selection-and-layout pipeline with user approval at every gate.
+description: Turn a large mixed pool of photos, videos and AI-edited images into a print-ready vendor photo book, with an orchestrator + worker-agent team and a gate at every irreversible step — acquire and inventory into a hashed ledger, re-cull with vision-judge fleets and pairwise duels, page-plan and then hand the user a live single-file HTML album builder whose geometry is diffed automatically against the print engine, produce print assets at honest real-pixel DPI, gate the printed pixels (trim, fold-on-a-face, visibility, derivation), then assemble the book and its cover wrap inside the vendor's web editor. Use when the user asks to build a photo book, family album, printed photo album, yearbook or trip album from their photo library, or wants an auditable selection-and-layout pipeline with user approval at every gate.
 ---
 
 # photo-album — a printed photo book, end to end
 
 Distilled from a real 30×30cm layflat book run: ~480 pool images, 33 videos, two AI-chat
-conversations of edited/fantasy images, 76 pages, 267 commits, 40 scripts, seven plan
-revisions. Every named constant below is a **parameter** — the numbers are the ones that
-were actually measured, not defaults to trust blindly.
+conversations of edited/fantasy images, 76 pages, 270+ commits, 40 scripts, eight plan
+revisions, and a book finally assembled object-by-object in the vendor's own editor. Every
+named constant below is a **parameter** — the numbers are the ones that were actually
+measured, not defaults to trust blindly.
 
 Read `references/lessons.md` **before making any resolution, validation or geometry
 decision.** Almost every expensive mistake in this pipeline is already listed there, with
 the number that bought it.
+
+## The route, end to end
+
+```
+Phase 0  contracts        title, product, trim size, reading direction, identity rules, DPI floors
+Phase 1  acquire          every source image local, in one hashed ledger, AI↔real pairs resolved
+Phase 2  select           re-cull the whole pool: vision triage → duels → the user's own tool
+Phase 3  plan             chapters → spreads → slots, AFTER measuring the vendor's real sheet
+Phase 4  assets           every planned image at print resolution, faces intact, honest DPI
+Phase 5  build            the user composes the book in a live single-file HTML builder
+Phase 6  print files      render, then gate the PRINTED PIXELS — fidelity, trim, visibility, faces
+Phase 7  vendor build     assemble in the vendor's editor, in a duplicate project
+Phase 8  cover            the wrap, the spine, the turn-in and the vendor's barcode
+Phase 9  order            the USER presses order and pays. Never the agent.
+Phase 10 distil           fold what this run learned back into this skill
+```
+
+Phases 6–8 are where a project that "looks finished" is still wrong. Budget for them.
 
 ## Run architecture (set up before Phase 1)
 
@@ -39,7 +58,7 @@ the number that bought it.
 - **Escalation.** Executors stop-with-question on spec contradictions; ORCH amends the
   packet and re-dispatches fresh. Packet shape: `references/protocols.md` Part 2.
 
-## Frozen contracts to establish at the plan gate (parameterize per project)
+## Phase 0 — Frozen contracts, established before anything else (parameterize per project)
 
 - **C1 TITLE** — exact string, exact language, decided early and never improvised later.
 - **C2 PRODUCT** — vendor, binding, trim size, page raster in px (30×30cm → 3600×3600;
@@ -181,6 +200,27 @@ Purpose: every planned asset exists at print resolution.
 - Validate: decode-reopen + non-blank on every written image (`check_no_empty.py`),
   dimensions, real-DPI floors, and the vendor-export validator run on the exact final files.
 
+**Faces and whole-frame AI edits — the rule that saves the album.** An image model's edit
+path **re-renders the entire frame** at ~1450px whatever you asked it to change, so every
+face in the picture comes back re-invented at 40–60px, including faces nowhere near the
+edit. Do not regenerate: **composite the real photographic faces back in.**
+
+1. Recover the transform between the generated frame and its real source. It does not have
+   to be identity — it has to be **recoverable**. A brute-force offset search proves pixel
+   alignment for a plain re-render; for an **outpainted** frame, recover a scale+translate by
+   **gradient correlation** (FFT coarse pass, then refinement).
+2. Paste through feathered elliptical masks with per-channel exposure matching to the
+   generated lighting, and a smoothstep falloff that ramps to zero before any adjacent
+   generated object — otherwise the paste leaks rectangles of real background.
+3. **Scan the whole frame, not the face the user pointed at.** In this run the user reported
+   one damaged face and there were three; two more re-invented faces would have printed.
+   Then audit every other asset produced by the same route.
+4. Record the substitution as a declared, guarded table applied inside the build — and apply
+   it on **every** path that constructs state, including the import path (lessons H3).
+
+The repaired file is also the higher-resolution one: 4032×3024 of real photograph against
+the model's 1448, i.e. real DPI 61 → 171 in one case and 75 → 300 in another.
+
 ## Phase 5 — The album builder
 
 Purpose: hand the user a **live, offline, single-file HTML album builder** and let them build
@@ -193,6 +233,16 @@ implementations of one geometry**, and they must be diffed automatically or they
 See `references/protocols.md` Part 3 for the gates. Never let the export→plan step *read* the
 builder's geometry — make the geometry **ride verbatim** on the slot and draw it with a
 line-for-line port of the composer's arithmetic.
+
+**And know what the harness does NOT catch.** A fidelity harness that compares rects,
+padding, z and angle validates only **where the picture is**. In this run all four agreed
+perfectly while two defects shipped: a tile that was transparent in the composer and painted
+**opaque paper** in the renderer (0.50mm of drawn frame on screen, 17.04mm on paper — and the
+same bug was silently matting five other slots), and a **lost rotation** caused by a legacy
+`rotate_deg` field the renderer honoured and the composer had never heard of. So the harness
+must also assert **what a tile paints where the picture is NOT** (ground opacity, drawn frame
+width in mm of paper, mat, shadow) and **which source file each engine opened**, with
+rotation compared mod 360 and a planted legacy field the engine must ignore. Gate G10.
 
 What the builder must have, in the order the run learned it:
 
@@ -247,18 +297,89 @@ severity-ranked, with a feature-gap comparison against commercial editors in the
 category — and convert every repro into a permanent regression test. In the reference run
 that audit surfaced three data-loss / wrong-print defects that every internal gate had passed.
 
-## Phase 6 — Vendor build
+## Phase 6 — Print files, and the gates that read printed pixels
 
-Purpose: the album assembled in the vendor's editor, ready for the user to order.
+Purpose: turn the ratified plan into the exact files that will be printed, and prove things
+about the **printed pixels** that no data validator can see. This is the phase most projects
+skip, and every defect that reached paper in this run would have been caught here.
 
-Verify the editor runs in the user's browser early (WebGL). Reconcile project settings with
-the plan (raise the page count in-editor). Upload the asset set. Place TWO spreads and verify
-the reading-direction convention on the real product with the user before mass placement.
-Save deliberately after every batch (assume there is no autosave). Work in chunked sequential
-sessions of ~6 spreads with a per-chunk checker audit against the exported layout. Finish
-with a joint full-book review. **The user orders and pays — never the agent.**
+Render the plan, then run, in this order (all specified in `references/protocols.md` Part 3):
 
-## Phase 7 — Distillation
+- **G1/G10 fidelity** — composer vs print engine, paired by geometry, plus ground opacity,
+  drawn frame width in mm, source identity and rotation mod 360.
+- **G2 absolute containment** — asserted independently on both sides, exempt per tile and
+  never per page.
+- **G3 sentinel-mask trim** — clearance as a number, not absence of ink.
+- **G4 mat band**, **G8 round-trip**, **G5 structural product promises**.
+- **G11 visibility** — every element rendered twice, once lifted out, and required to differ
+  inside its own rectangle. A frame that exists in the plan but cannot be seen is a defect.
+- **G12 human-rule gates** — the fold must never fall on a face (report); the trim must never
+  cut a person (fatal); frame rings checked on **all four sides** against both your sheet and
+  the vendor's trim.
+- **G13 derivation** — every derived artifact re-derived from its current source, byte for
+  byte. A stale downstream copy bit this run three separate times, in three subsystems, with
+  every other gate green (lessons H).
+
+Every new gate ships with a **negative proof**: turn the fix off and watch the gate fail
+exactly the items it used to pass. Corrections to an approved plan go in a **declared override
+table** whose entries state the export values they `expect`, so the build stops if the owner
+has since recomposed that tile — never hand-edit a generated plan (lessons I7).
+
+## Phase 7 — Vendor build
+
+Purpose: the album assembled in the vendor's editor, ready for the user to order. Full method
+in `references/protocols.md` Part 5; the short form:
+
+1. **Duplicate the project** and snapshot every canvas's object geometry first. There is no
+   undo here; the duplicate is the undo.
+2. **Establish what the editor can be told.** In this run: axis-aligned boxes only — W, H, X,
+   Y in centimetres, no angle, no crop, no zoom. Everything else must be **baked into pixels
+   before upload**. Rotation is the visible instance; **crop is the expensive one** — 88 of 115
+   slots had a frame aspect their file did not, and typing the plan's W/H onto the raw files
+   would have squashed all 88.
+3. **Bake overlapping things together** into opaque groups over a full-sheet background object,
+   rather than trusting the vendor's alpha handling. Bake at ~3× the renderer's canvas.
+4. **Prove ONE unit end to end** — place → type → save → reload → read back at 0.0mm — before
+   committing all N. Save deliberately after every batch; assume no autosave; verify *after*
+   the save.
+5. **Verify canvas ORDER against the labels.** The DOM order here was **reversed** (DOM index 0
+   was the last spread), and placing in DOM order would have printed the album back to front.
+   Pin down every index↔label mapping explicitly: reading direction, DOM order, and proof-PDF
+   page numbering are three separate mappings and each was wrong once.
+6. **Key objects by geometry**, because vendor ids are regenerated on save: canvas index plus
+   geometry in cm rounded to 0.01, with a payload property unique per canvas.
+7. **Nothing deleted, nothing ordered.** Stale library images are listed for the owner to
+   delete as his own authorised act.
+
+## Phase 8 — The cover, the spine and the wrap
+
+Purpose: the outside of the book, which is a **different product** from the inside. No
+page-level gate touches any of it. Full checklist in `references/protocols.md` Part 6.
+
+- **Measure the cover canvas's own scale.** Do not inherit the interior's px/cm. Here the
+  cover sheet was really 64.30 × 32.00cm, a uniform 1.077× the figure in the spec — so a wrap
+  rendered at the spec's cm was **283 dpi, 7.7% short**, caught one step before printing.
+- **The spine is real.** A codebase-wide grep for "spine" returning zero hits while two cover
+  masters already exist is a finding, not a relief. 10–20mm comes out of the middle of the
+  wrap; on a collage whose inner cell column sits at the fold it reads as a badly cropped tile.
+- **Reserve the vendor's own furniture.** The barcode and logo print **white-backed, over your
+  artwork**. Mapped into this run's back-cover collage the block landed on four faces (47.9%
+  skin by area). Declare it as a dead zone to whatever packs the artwork and re-bake — never
+  place it anyway.
+- **Ask the owner which panel is the front.** Circumstantial evidence is not proof, and trying
+  to settle it by clicking the editor's 3D preview wedged the app for six minutes.
+- **Run the face check on the delivered wrap**, in true millimetres, against every protected
+  zone at once, and report the nearest-face clearance per zone as a number for the owner to
+  accept or reject.
+
+## Phase 9 — The order
+
+Joint full-book review, then **the user orders and pays. Never the agent.** The same applies to
+deleting stale uploads and to reloading a tab over unsaved work: irreversible acts belong to
+the owner.
+
+## Phase 10 — Distillation
+
 
 Re-read the journal, the decision log and the records; update this skill: generalize new
 scripts, promote new lessons with their numbers, parameterize anything project-specific that
@@ -287,11 +408,26 @@ leaked in. Gate: the user approves the skill.
 13. **Freeze before loosening** — prove nothing moves, then relax the constraint.
 14. **The user is the authority on their own album**; style-guide bans are defaults, and a
     waiver is recorded so no later review silently re-applies it.
+15. **A cross-engine diff proves where a picture is, never what a tile paints where the
+    picture is not** — assert ground, mat, drawn frame width and which source each engine read.
+16. **"Correct rect" and "visible" are different assertions.** Render it twice, once without
+    the element, and require a difference.
+17. **Never regenerate a frame to fix a face — composite the real face back.** Alignment need
+    not be identity; it must be recoverable. And scan the whole frame, not the face reported.
+18. **Vendor space is not plan space, and the cover is not the interior.** Measure both sheets,
+    and measure the vendor's printed furniture as content.
+19. **Assert derivation, never assume it.** Ask what *opens* the file, not what declares it.
+20. **Turn the owner's sentences into gates that run over the rendered artefact** — they will
+    find instances he never saw — and re-run every gate against its own fix.
+21. **Prove one unit end to end before committing all of them**, and verify order against
+    labels rather than against your recon.
 
 ## References
 
 - `references/lessons.md` — the hard rules, each with the number that bought it.
-- `references/protocols.md` — vision-fleet templates, the executor packet, the fidelity /
-  trim / mat gates, round-trip integrity, and the ingestion / sticker / decoration pipelines.
+- `references/protocols.md` — vision-fleet templates, the executor packet, the fourteen print
+  gates (fidelity, ground/source, containment, trim, mat, visibility, human-rule, derivation,
+  vendor-space), the ingestion / sticker / decoration pipelines, the vendor-editor build
+  method, and the cover / spine / wrap checklist.
 - `references/scripts.md` — the bundled scripts, their modes and frozen validations, plus the
   patterns for the parts that were too project-specific to ship.

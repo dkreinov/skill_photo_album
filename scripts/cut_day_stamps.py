@@ -440,10 +440,10 @@ def fit_ellipse_single(fg: np.ndarray) -> dict | None:
 
 
 def estimate_daughter_face_px(badge_rgba: Image.Image, ellipse: dict) -> int:
-    """Rough face-height estimate (px) for the older girl (daughter). These HQ badges
-    consistently compose the family shoulder-up to full-body inside the fitted ellipse
-    with faces in the upper ~55-75% band of the badge; the daughter is usually second
-    from the left/center. We don't run a face detector (no such dependency in this
+    """Rough face-height estimate (px) for a representative figure in the badge. These HQ
+    badges consistently compose the group shoulder-up to full-body inside the fitted
+    ellipse with faces in the upper ~55-75% band of the badge; the reference figure is
+    usually second from the left/center. We don't run a face detector (no such dependency in this
     repo) -- instead take the well-established portrait-badge proportion: face height
     is about 11-13% of the badge's vertical diameter (2*b) for this composition style.
     That proportion was checked by eye against several cut crops during this run."""
