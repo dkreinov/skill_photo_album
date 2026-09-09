@@ -1,6 +1,6 @@
 ---
 name: photo-album
-description: Turn a large mixed pool of photos, videos and AI-edited images into a print-ready vendor photo book, with an orchestrator + worker-agent team and a gate at every irreversible step — acquire and inventory into a hashed ledger, re-cull with vision-judge fleets and pairwise duels, page-plan and then hand the user a live single-file HTML album builder whose geometry is diffed automatically against the print engine, produce print assets at honest real-pixel DPI, gate the printed pixels (trim, fold-on-a-face, visibility, derivation), then assemble the book and its cover wrap inside the vendor's web editor. Use when the user asks to build a photo book, family album, printed photo album, yearbook or trip album from their photo library, or wants an auditable selection-and-layout pipeline with user approval at every gate.
+description: Rank, cull and lay out a thousand holiday photos, and carry the survivors all the way to a printed book. Clusters near-duplicate bursts by capture time and visual similarity so a burst is judged once, then runs a fleet of blind vision judges that score every cluster on four 1-5 axes and name its best member, then settles the contested middle with pairwise duels because absolute scores are weak between close rivals — 30 triage judges over 237 clusters and 34 duel groups over 139 duels on a 479-image pool in the reference run. Any previous album is re-culled on merit too: prior picks get an incumbent bonus, never a veto. The shortlist then lands in an offline HTML tool where the user rules keep / keep+enhance / drop, and that verdict wins. Downstream: page plan, print assets at honest real-pixel DPI, optional AI-edited "fantasy" images with the real photographic faces composited back, a live single-file album builder the user composes in, gates that read the printed pixels (trim, fold-on-a-face, visibility, derivation), and assembly in the vendor's web editor — the user orders and pays, never the agent. What it does not do: it does not know what matters to you emotionally, cannot tell the friend from the stranger, and does not judge sentiment; it ranks sharpness, composition, technical quality and moment quality, and the human makes the final call on every keep, drop and page. Use when the user asks to cull, rank, shortlist or de-duplicate a large photo library, pick the best shots from bursts or a trip, or build a photo book, family album, printed photo album, yearbook or trip album — or wants an auditable selection-and-layout pipeline with user approval at every gate.
 ---
 
 # photo-album — a printed photo book, end to end
@@ -183,9 +183,19 @@ frozen plan from the draft plus every chat ruling, with any unresolved item reco
 
 Purpose: every planned asset exists at print resolution.
 
-- Execute the work manifest: approved new generations and enhancements via the AI chat,
-  identity-preserving per C4, each judged against the user's stated conditional with the
-  stated fallback applied.
+- Execute the work manifest: approved new generations and enhancements through **whatever
+  image-generation service the project uses**, identity-preserving per C4, each judged against
+  the user's stated conditional with the stated fallback applied.
+
+**The generator is swappable — the requirements are not.** The reference run drove a chat model
+in a browser; that is an implementation detail. Any service works if it offers (a) image-to-image
+editing that keeps the source composition, (b) a reference/character sheet the model honours, and
+(c) a downloadable result at native full resolution. Swapping means reimplementing one function,
+`generate(job) -> asset`; provenance recording, the pairs file, upscaling, the face composite and
+every validator stay identical. An API generator is the cleanest (scriptable, so the step leaves
+`owner: ORCH`); a browser UI costs you automation and hand-written provenance; a local model
+costs a GPU and buys privacy and seeds. Full comparison and the seam's contract:
+`references/protocols.md` Part 7.
 - **Two-step generation, one job per turn**: character sheet first, then scenes from the
   sheet; artwork first (with deliberate empty space), then titling of the finished artwork.
   Ask for N images, never one sheet of N (lessons A1).
@@ -428,6 +438,7 @@ leaked in. Gate: the user approves the skill.
 - `references/protocols.md` — vision-fleet templates, the executor packet, the fourteen print
   gates (fidelity, ground/source, containment, trim, mat, visibility, human-rule, derivation,
   vendor-space), the ingestion / sticker / decoration pipelines, the vendor-editor build
-  method, and the cover / spine / wrap checklist.
+  method, the cover / spine / wrap checklist, and how to swap the image-generation service
+  (Part 7).
 - `references/scripts.md` — the bundled scripts, their modes and frozen validations, plus the
   patterns for the parts that were too project-specific to ship.

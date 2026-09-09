@@ -1,8 +1,39 @@
-# photo-album — a Claude Code skill for building a real printed photo book
+# photo-album — a Claude Code skill for culling a thousand photos and printing the survivors
 
-Turn a large, messy pool of photos, videos and AI-edited images into a **printed book you can
-hold** — with an auditable selection trail, a live album builder the owner drives themselves,
-and gates that check the *printed pixels* rather than the plan that produced them.
+You came back from a trip with a thousand photos. Eleven near-identical frames of the same
+statue, four of them sharp; a dozen you already know you love; and several hundred you will
+never open again. Nobody sits through that folder twice, so the album never gets made.
+
+**This skill does the pass you never do — and shows its work.**
+
+It clusters the pool first, so eleven frames of the same statue are one decision, not eleven:
+near-duplicates grouped by capture time and visual similarity, with a hard split at a long time
+gap. Then a fleet of **blind vision judges** scores each cluster on four 1–5 axes and names the
+best member of the burst. Absolute scores are reliable at the extremes and useless between close
+rivals, so the contested middle goes to **pairwise duels** — Swiss rounds, shuffled A/B order,
+and a mandatory reversed re-run whenever the margin is slim. Every verdict is written to a file,
+so any pick can be traced back to the judge that made it.
+
+Already have an old version of the album? It gets **re-culled with everything else.** Previous
+picks carry a small incumbent bonus and never a veto — "on some of them we were wrong" is a
+thing the reference run's owner said out loud, and the pipeline is built to let him be right.
+
+Then the shortlist lands in an **offline HTML tool** in your browser: thumbnails, a full-res
+lightbox, and three buttons per cluster — keep, keep + enhance, drop. Your export is the
+approval, and your overrides are never argued with. In the reference run that was **30 triage
+judges over 237 clusters and 34 duel groups over 139 duels, on a pool of 479 images**, before a
+human looked at anything.
+
+**What it explicitly cannot do:** it does not know what matters to you. It cannot tell your
+oldest friend from a stranger in the background, or the ordinary-looking frame that happens to
+be the last picture of someone. It ranks **sharpness, composition, technical quality and the
+strength of the moment** — nothing else — and every final keep, drop and page is yours. The
+machine's job is to make the pile small enough that your judgement is affordable.
+
+And then it keeps going: page plan, print assets at honest real-pixel DPI, a **live album
+builder** you compose the book in yourself, gates that check the *printed pixels* rather than
+the plan that produced them, and assembly in the print vendor's own web editor. **You press
+order. Never the agent.**
 
 Built with and for [Claude Code](https://claude.com/claude-code). The agent orchestrates; the
 deterministic steps are plain-Python scripts bundled here.
@@ -40,6 +71,11 @@ Friday, use your vendor's own editor — it is a good tool and this is not a rac
 - It is **not vendor-agnostic** out of the box. Trim size, safe margin, accepted formats,
   page-count rules, cover scale and reading direction must be *measured* from your vendor's own
   editor before layout begins. The skill teaches the measuring; it cannot ship your numbers.
+- It is **not tied to one image generator**, but it does not ship credentials for any. The
+  "fantasy" images need an image-to-image editor that keeps the source composition, accepts a
+  reference sheet and returns a full-resolution file — an API, another web UI, or a local model.
+  `references/protocols.md` Part 7 defines the one function to reimplement and compares the
+  three levels honestly.
 - It is **not a design tool**. It gives you a competent, honest layout with guardrails. A
   designer will do better-looking work faster.
 - It is **not autonomous**. It is built around user gates and it will stop and ask.
@@ -75,7 +111,8 @@ Then, in order — the full route is at the top of `SKILL.md`:
 SKILL.md                     the route, the run architecture, the contracts, the ten phases
 references/lessons.md        the hard rules (A–K), each with the number that bought it
 references/protocols.md      vision-fleet templates, executor packets, gates G1–G14,
-                             the vendor-editor build method, the cover/spine/wrap checklist
+                             the vendor-editor build method, the cover/spine/wrap checklist,
+                             and Part 7: swapping the image-generation service
 references/scripts.md        the bundled scripts, and specs for the parts not shipped
 scripts/                     14 generic, verifiable Python scripts
 ```

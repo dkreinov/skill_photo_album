@@ -6,6 +6,7 @@
 - **Part 4** — the asset pipelines (ingestion, stickers, decorations, badges).
 - **Part 5** — building the book inside the vendor's editor.
 - **Part 6** — the cover, the spine and the wrap (a different product from the interior).
+- **Part 7** — the image-generation service, and how to swap it for another one.
 
 ---
 
@@ -471,3 +472,162 @@ wrap.
    zone as a number for the owner to accept or reject.
 7. **Place one continuous wrap image, not three panels**, where the editor fills a frame from a
    single file: three panels add two seams and two more chances to mistype a number, for nothing.
+
+---
+
+# Part 7 — The image-generation service, and how to swap it
+
+The reference run produced its "fantasy" images (an edited version of a real photo — the same
+moment with something added, removed or restyled) by driving a chat-based image model in a
+browser. **That is an implementation detail, not the method.** Nothing downstream of the
+generator knows or cares which service made a file. This part says what the pipeline actually
+requires, which seam to cut, and what stays true whatever you plug in.
+
+## 7.1 What the pipeline requires of ANY generator
+
+Three capabilities. A service missing any of them cannot be dropped in without changing the
+method itself:
+
+1. **Image-to-image editing that preserves the source composition.** The fantasy image must be
+   *this* photo with a change, not a new picture on the same theme — because the plan pairs it
+   with a real inset of the same moment, and the pairing is what makes it honest. Text-to-image
+   alone does not qualify.
+2. **A reference the model will honour** — a character sheet, style reference or identity image
+   sent alongside the edit prompt, so people and style stay consistent across a whole chapter's
+   worth of generations.
+3. **A downloadable full-resolution result**, saved to disk as a file, with whatever native
+   pixel dimensions the model actually produced (not a re-encoded preview). The DPI floors are
+   computed from **native pre-upscale pixels**, so a service that only shows you a display-sized
+   render costs you the honesty of every number downstream.
+
+Nice to have, not required: seeds or determinism, inpainting with a mask (it reduces but does
+not remove the face problem in 7.4), and a documented output resolution.
+
+## 7.2 The seam — what to change, and what must not change
+
+The generation step is a single function with a fixed contract. Everything else in the pipeline
+is written against the contract, not against the service.
+
+```
+generate(job) -> asset
+
+job    { job_id, kind: enhancement|fantasy|decoration|character-sheet,
+         source_image_path | null,      # null only for a sheet or a from-scratch decoration
+         reference_image_paths: [...],  # character sheet / style refs
+         prompt, identity_guardrails,   # exact people, exact count, no morphing (C4)
+         constraints }                  # empty space to reserve, aspect, "one design per image"
+
+asset  { out_path,                      # a real file on disk, native resolution, never edited in place
+         native_w, native_h,            # what the SERVICE returned, before any upscale
+         source_image_id | null,        # the real photo this edits — the pairing ground truth
+         service, model, prompt, reference_ids, requested_at }
+```
+
+**Replacing the service means reimplementing `generate()` and nothing else.** Identical
+regardless of service:
+
+- **Provenance recording.** One line per produced image saying what it is and what it came from
+  ("real photo | generated | edit of NNN"). The pipeline pairs AI images to their real sources
+  by **provenance, never by pHash** — pHash is a flagged fallback only. A new service must still
+  emit that note at generation time; recovering it later means guessing between three
+  indistinguishable frames of one burst (lessons E14).
+- **The pairs file**, and the C4 rule it enforces: every fantasy image has a real anchor on the
+  same or facing page, or an explicitly user-approved standalone status.
+- **Upscaling** toward the page raster, and the standing statement that upscaling adds no real
+  detail. AI outputs in the reference run were 1024–1536px native; the page raster was 3600px.
+- **The face-restoration composite** of 7.4, and the 100% face-crop review that follows it.
+- **Immutability** (C6): the returned file is an original and is never edited in place; repairs
+  are new `_vN` files.
+- **The validators**: decode-reopen, non-blank, dimensions, content-tiered real-DPI floors, and
+  the vendor-format conversion.
+
+## 7.3 Three levels of service, honestly compared
+
+**An API generator (an API key and one HTTP POST) — the cleanest, and the default recommendation.**
+`generate()` becomes a request carrying the source image, the reference image and the prompt,
+plus a file write of the response bytes. It is scriptable, so the step can run inside a WORKER
+executor instead of requiring `owner: ORCH` and the user's authenticated browser; it can be
+batched, retried and rate-limited; native resolution is documented; and provenance is captured
+automatically, because the code that asked for the image also writes the record. Costs: it is
+metered per image, the exact model behind a chat product is often *not* the model exposed by its
+API, and image APIs deprecate faster than anything else in this stack. Pin the model identifier
+in the contracts and record it per asset.
+
+**Another browser-driven web UI — what the reference run did.** Chosen because the user already
+had the subscription and that product's chat edit path was the best available to him. The costs
+are all real: the step is `owner: ORCH` forever, because a browser session cannot be handed to a
+subagent; it is one job per turn and slow; provenance is hand-written and therefore loseable;
+downloads must be harvested in on-page order and renamed (`NNN_desc.png`); and the product can
+change its edit behaviour between sessions with no changelog. Use it when the model you want has
+no API, or when the subscription is already paid for and the volume is a few dozen images. Do
+**not** use it for hundreds.
+
+**A local model (diffusion with an image-to-image / IP-adapter path).** No metering, no rate
+limits, real determinism through seeds, and nothing about the family leaves the machine — which
+for an album of children is a genuine argument, not a technicality. Costs: a GPU and a working
+environment to maintain; native output that is usually *smaller* than the hosted services, which
+makes the DPI floors bite harder; and identity consistency that you now own — the
+character-sheet technique of 7.5 matters more here, not less. Best where volume is high or
+privacy is the deciding factor.
+
+Whichever level you pick, record `service` and `model` per asset. When output quality shifts
+mid-run the first question is always "did the model change under us", and only the record can
+answer it.
+
+## 7.4 The constraint that survives any service
+
+**A whole-frame AI edit re-renders the whole frame, at the model's own resolution, and
+re-invents every face in it — including faces nowhere near the edit you asked for.**
+
+This is not a quirk of one product. It follows from how image-to-image editing works: the model
+decodes an entirely new frame rather than patching your pixels. In the reference run the returned
+frame was ~1448 × 1086, which puts a face at 40–60px — far too few pixels to still be the same
+person. The owner reported one damaged face in an image; measurement found **three**. Two extra
+re-invented faces were on their way to paper. This was the single most expensive lesson in the
+project.
+
+So, whatever generator you use:
+
+1. **Never accept a whole-frame AI edit as final where faces matter.** Measure the face pixel
+   size in the returned image; treat anything under roughly 150px across a face as re-invented
+   until proven otherwise.
+2. **Do not regenerate to fix a face.** Regeneration reproduces the identical damage and adds
+   identity drift on top (lessons E11).
+3. **Composite the real photographic faces back from the source**, through feathered elliptical
+   masks with per-channel exposure matching to the generated lighting, and a smoothstep falloff
+   that ramps to zero before any adjacent generated object. Recover the transform first: it need
+   not be identity, it needs to be **recoverable** — a brute-force offset search for a plain
+   re-render, gradient correlation (FFT coarse pass, then refinement) where the frame was
+   outpainted.
+4. **Check the result at 100% face crops**, by eye, over the whole frame — not only the face that
+   was reported — and then audit every other asset that came through the same generation route.
+5. Prefer, where the service offers it, a **masked / inpainted edit** over a whole-frame edit. It
+   narrows the blast radius; it does not remove the check.
+
+The composite is also a resolution **gain**, not a compromise: real photographic pixels
+(4032 × 3024) replacing model pixels (1448) took one asset from 61 to 171 real DPI and another
+from 75 to 300.
+
+Cutouts are the same argument in a stronger form: use **segmentation, never generation**
+(`rembg` copies RGB verbatim and authors only alpha, so a face physically cannot change), and
+generate only decorative elements — on plain white, cut locally and deterministically, then
+composited at full resolution by your own renderer (lessons E4).
+
+## 7.5 The two-step technique, which is service-independent
+
+Ask for **one job per turn**, and build in two steps:
+
+- **People and style: the character sheet first, then the scenes.** Generate a reference sheet of
+  the characters and style, get it accepted, and start every later generation from that file as a
+  reference. In the reference run this produced 5/5 sheets accepted on first generation, with
+  likeness holding across 25 downstream badges and zero retries.
+- **Titled artwork: the artwork first, then the title.** Generate the picture with deliberate
+  empty space reserved, then ask for the title to be added to the finished image. This produced
+  correct right-to-left titles letter by letter — a result the orchestrator had written off as
+  impossible in one step.
+- **Ask for N images, never one sheet of N**, when N pieces will be cut apart (lessons A1).
+- **Fix a wrong physical description at its source file** — the character sheet every later
+  generation starts from — never per generation. One wrong descriptive word propagated
+  agent-to-agent through the reference run and forced three separate reruns.
+- Restate the identity guardrails (exact people, exact count, no morphing) in **every**
+  generation packet, and reject-and-retry rather than shipping a near-miss.
